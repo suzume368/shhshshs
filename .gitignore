@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+env/
+venv/
+*.egg-info/
+
+# Secrets
+*.env
+*.secret
+*.key
+*.token
+
+# Optional: Keep queue private if needed
+# reel_queue.json
