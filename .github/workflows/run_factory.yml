@@ -105,24 +105,18 @@ jobs:
           
           # 2. Trigger execution via Kaggle API v1
           echo "🔥 Triggering notebook execution via API..."
-          HTTP_CODE=$(curl -s -o /tmp/kaggle_response.json -w "%{http_code}" -X POST \
-            -u "$KAGGLE_USERNAME:$KAGGLE_KEY" \
-            "https://www.kaggle.com/api/v1/kernels/execute" \
-            -H "Content-Type: application/json" \
-            -d "{\"kernel_slug\": \"muhammadasjad2008/content-factory-engine\"}")
+          # 1. Create the system folder where the Kaggle CLI looks for authentication files
+          mkdir -p ~/.kaggle
+        
+           # 2. Re-create the secure credentials token on the fly
+          echo "{\"username\":\"$KAGGLE_USERNAME\",\"key\":\"$KAGGLE_KEY\"}" > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
+        
+           # 3. Fire the API push trigger using the metadata file parameters
+           # This pushes 'notebook.py' and instantly boots up the Kaggle server on a T4 GPU
+           kaggle kernels push -p . --accelerator "NvidiaTeslaT4"
           
-          # 3. Handle response
-          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "202" ]; then
-            echo "✅ Execution triggered successfully (HTTP $HTTP_CODE)"
-          elif [ "$HTTP_CODE" = "404" ]; then
-            echo "⚠️ API returned 404 (known Kaggle quirk). Checking if 'Run on push' auto-triggered..."
-            echo "💡 Kaggle usually auto-runs within 60s of sync. Monitor notebook status."
-          else
-            echo "⚠️ API response: HTTP $HTTP_CODE"
-            cat /tmp/kaggle_response.json
-          fi
-          
-          echo "🔗 Monitor progress: https://www.kaggle.com/code/muhammadasjad2008/content-factory-engine"
+           echo "🔗 Monitor progress: https://www.kaggle.com/code/muhammadasjad2008/content-factory-engine"
 
       
 # name: Content Factory Orchestrator
