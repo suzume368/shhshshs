@@ -100,7 +100,7 @@ jobs:
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-        run: kaggle kernels push -p .
+        run: export KAGGLE_USERNAME="$KAGGLE_USERNAME" && export KAGGLE_KEY="$KAGGLE_KEY" && kaggle kernels push -p .
 # name: Content Factory Orchestrator
 
 # on:
