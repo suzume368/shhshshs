@@ -176,7 +176,7 @@ jobs:
           echo "🔐 Auth credentials saved."
           echo "🚀 Triggering remote execution on Kaggle..."
           
-          kaggle kernels push -p .
+          kaggle kernels push -p . /muhammadasjad2008/content-factory-engine
           echo "✅ Pushed and running: https://www.kaggle.com/muhammadasjad2008/content-factory-engine"
 
 
