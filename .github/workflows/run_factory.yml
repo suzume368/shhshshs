@@ -120,26 +120,104 @@ jobs:
             git push
           fi
 
-      # 6. 🔥 PUSH NOTEBOOK TO KAGGLE (Simple & Reliable)
+        # 6. 🔥 PUSH NOTEBOOK TO KAGGLE (DEBUG-HEAVY, BULLETPROOF)
       - name: Push Notebook to Kaggle
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KERNEL_ID: "${{ secrets.KAGGLE_USERNAME }}/content-factory-engine"
         run: |
-          echo "🔐 Setting up Kaggle auth..."
-          mkdir -p ~/.kaggle
-          printf '{"username":"%s","key":"%s"}\n' "$KAGGLE_USERNAME" "$KAGGLE_KEY" > ~/.kaggle/kaggle.json
-          chmod 600 ~/.kaggle/kaggle.json
+          set -e  # Exit on any error
           
-          pip install -q kaggle
+          echo "🔐 Setting up Kaggle authentication..."
           
+          # DEBUG: Show secret lengths (sanitized)
+          echo "📏 KAGGLE_USERNAME length: ${#KAGGLE_USERNAME}"
+          echo "📏 KAGGLE_KEY length: ${#KAGGLE_KEY}"
+          
+          # Validate secrets aren't empty
+          if [ -z "$KAGGLE_USERNAME" ] || [ -z "$KAGGLE_KEY" ]; then
+            echo "❌ ERROR: Kaggle secrets are empty. Check GitHub Settings → Secrets."
+            exit 1
+          fi
+          
+          # Create kaggle.json with PROPER escaping (handles special chars)
+          KAGGLE_DIR="$HOME/.kaggle"
+          mkdir -p "$KAGGLE_DIR"
+          
+          # ✅ Use python to create JSON (avoids shell escaping issues)
+          python3 -c "
+          import json, os
+          creds = {'username': os.environ['KAGGLE_USERNAME'], 'key': os.environ['KAGGLE_KEY']}
+          with open(os.path.expanduser('~/.kaggle/kaggle.json'), 'w') as f:
+              json.dump(creds, f)
+          "
+          chmod 600 "$KAGGLE_DIR/kaggle.json"
+          
+          # DEBUG: Show file exists and is valid JSON
+          echo "📄 Verifying kaggle.json..."
+          if [ ! -f "$KAGGLE_DIR/kaggle.json" ]; then
+            echo "❌ ERROR: kaggle.json not found at $KAGGLE_DIR/kaggle.json"
+            exit 1
+          fi
+          python3 -c "
+          import json, os
+          f = os.path.expanduser('~/.kaggle/kaggle.json')
+          d = json.load(open(f))
+          print(f'✅ Valid JSON: username={d[\"username\"]}, key_len={len(d[\"key\"])}')
+          "
+          
+          # Install/upgrade Kaggle CLI to latest version
+          echo "📦 Installing latest Kaggle CLI..."
+          pip install --upgrade -q kaggle
+          kaggle --version
+          
+          # TEST AUTH with a lightweight, reliable command
+          echo "🧪 Testing authentication..."
+          AUTH_TEST=$(kaggle kernels list -m 1 --csv 2>&1)
+          if echo "$AUTH_TEST" | grep -q "401\|Unauthorized"; then
+            echo "❌ Auth failed (401). Your KAGGLE_KEY is invalid."
+            echo "💡 Fix: Go to https://www.kaggle.com/settings → API → Create New Token"
+            echo "💡 Then update GitHub Secrets → KAGGLE_KEY with the NEW key value"
+            exit 1
+          elif echo "$AUTH_TEST" | head -1 | grep -q .; then
+            echo "✅ Authentication successful!"
+          else
+            echo "⚠️ Auth test returned empty. Proceeding cautiously..."
+          fi
+          
+          # Verify kernel-metadata.json exists and has correct id
+          echo "📄 Checking kernel-metadata.json..."
+          if [ ! -f "kernel-metadata.json" ]; then
+            echo "❌ ERROR: kernel-metadata.json not found in repo root"
+            exit 1
+          fi
+          META_ID=$(python3 -c "import json; print(json.load(open('kernel-metadata.json'))['id'])")
+          echo "🎯 Kernel ID from metadata: $META_ID"
+          if [ "$META_ID" != "$KERNEL_ID" ]; then
+            echo "⚠️ WARNING: Metadata ID ($META_ID) != Expected ($KERNEL_ID)"
+            echo "💡 Ensure kernel-metadata.json 'id' matches: YOUR_USERNAME/content-factory-engine"
+          fi
+          
+          # PUSH to Kaggle
           echo "🚀 Pushing notebook to Kaggle..."
-          kaggle kernels push -p .
+          PUSH_OUTPUT=$(kaggle kernels push -p . 2>&1) || true
+          echo "$PUSH_OUTPUT"
           
-          echo "✅ Push complete!"
+          if echo "$PUSH_OUTPUT" | grep -q "401\|Unauthorized"; then
+            echo "❌ Push failed (401). This usually means:"
+            echo "   1. The notebook doesn't exist yet on Kaggle (create it manually first)"
+            echo "   2. Your KAGGLE_KEY is invalid or expired"
+            echo "   3. Kernel ID mismatch in kernel-metadata.json"
+            exit 1
+          elif echo "$PUSH_OUTPUT" | grep -q "successfully"; then
+            echo "✅ Push successful!"
+          else
+            echo "⚠️ Push output unclear. Check Kaggle manually."
+          fi
+          
           echo "📅 Kaggle will auto-run on its schedule (check notebook settings)"
-          echo "🔗 Monitor: https://www.kaggle.com/$KAGGLE_USERNAME/content-factory-engine"
-
+          echo "🔗 Monitor: https://www.kaggle.com/$KERNEL_ID"
 # name: Content Factory Orchestrator (Duplicate-Proof)
 
 # on:
