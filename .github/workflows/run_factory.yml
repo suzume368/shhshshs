@@ -1,28 +1,32 @@
-name: Content Factory Data Pipeline
+name: Content Factory Orchestrator (GitHub Sync + API Trigger)
 
 on:
   schedule:
     - cron: '0 9,17 * * *'  # 9 AM & 5 PM UTC
-  workflow_dispatch:         # Manual trigger
+  workflow_dispatch:         # Manual one-click trigger
 
 jobs:
-  prepare-data:
+  automate:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
+      # 1. Checkout repo
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 2. Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
+      # 3. Install dependencies
       - name: Install Dependencies
-        run: pip install requests openai
+        run: pip install requests openai kaggle
 
+      # 4. Process queue → generate pipeline_data.json
       - name: Process Queue & Generate Script
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -80,18 +84,35 @@ jobs:
           print(f"✅ Queued: {pick['url']}")
           EOF
 
+      # 5. Commit & Push (Triggers GitHub → Kaggle Sync)
       - name: Commit & Push Data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f reel_queue.json pipeline_data.json
           git diff-index --quiet HEAD -- || git commit -m "Auto: queued reel [skip ci]" && git push || true
+          echo "✅ Data committed. Kaggle sync will detect update within ~60s."
 
-      - name: Final Status
+      # 6. 🔥 TRIGGER KAGGLE EXECUTION (API + Wait for Sync)
+      - name: Trigger Kaggle Execution
+        env:
+          KAGGLE_CONFIG: ${{ secrets.KAGGLE_CONFIG }}
         run: |
-          echo "✅ Data prepared & committed."
-          echo "⏳ Kaggle will auto-sync & run within 1-3 minutes."
-          echo "🔗 Monitor: https://www.kaggle.com/muhammadasjad2008/content-factory-engine"
+          # Setup auth
+          mkdir -p ~/.kaggle
+          echo "$KAGGLE_CONFIG" > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
+          
+          # CRITICAL: Wait for Kaggle to register the GitHub sync
+          echo "⏳ Waiting 50s for Kaggle-GitHub sync to register..."
+          sleep 50
+          
+          # Trigger execution of the latest synced version
+          echo "🔥 Triggering notebook execution..."
+          kaggle kernels run -k "muhammadasjad2008/content-factory-engine"
+          
+          echo "✅ Execution triggered! Kaggle will now process the reel."
+          echo "🔗 Monitor: https://www.kaggle.com/code/muhammadasjad2008/content-factory-engine"
 # name: Content Factory Orchestrator
 
 # on:
