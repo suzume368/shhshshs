@@ -7,7 +7,14 @@
       "added_at": "2026-01-15T12:00:00Z"
     }
   ],
-  "processed": [],
+  "processed": [
+    {
+      "url": "https://www.instagram.com/reel/DYPm93nIELU/",
+      "username": "evolving.ai",
+      "status": "in_progress",
+      "started_at": "2026-05-16T03:07:26.044734+00:00"
+    }
+  ],
   "metadata": {
     "total_queued": 1,
     "total_processed": 0,
