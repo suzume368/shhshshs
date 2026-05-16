@@ -125,51 +125,76 @@ jobs:
             git push
           fi
 
-      # 6. Push to Kaggle + TRIGGER EXECUTION (The One-Click Magic)
-      - name: Push & Trigger Kaggle
+            # 6. Push, Trigger & Stream Kaggle Logs Live to GitHub
+      - name: Push, Trigger & Stream Kaggle Logs
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KERNEL_SLUG: "content-factory-engine"
         run: |
-          echo "🚀 Pushing to Kaggle..."
-          
           # Setup Kaggle CLI
           mkdir -p ~/.kaggle
           echo "{\"username\":\"$KAGGLE_USERNAME\",\"key\":\"$KAGGLE_KEY\"}" > ~/.kaggle/kaggle.json
           chmod 600 ~/.kaggle/kaggle.json
           
-          # Push code to Kaggle
-          kaggle kernels push -p . 2>&1 | tee push.log
+          echo "🚀 Pushing code to Kaggle..."
+          kaggle kernels push -p .
           
-          # Wait for push to propagate
-          echo "⏳ Waiting for Kaggle to process push..."
-          sleep 45
-          
-          # Trigger execution via Kaggle API
-          echo "🔥 Triggering Kaggle execution..."
+          echo "🔥 Triggering execution..."
           curl -s -X POST \
-            -H "Content-Type: application/json" \
             -u "$KAGGLE_USERNAME:$KAGGLE_KEY" \
             "https://www.kaggle.com/api/v1/kernels/execute" \
-            -d "{
-              \"user_name\": \"$KAGGLE_USERNAME\",
-              \"kernel_slug\": \"content-factory-engine\",
-              \"source_type\": \"github\",
-              \"source_url\": \"https://github.com/${{ github.repository }}\"
-            }" > trigger_response.json 2>&1 || echo "⚠️ API trigger failed"
+            -H "Content-Type: application/json" \
+            -d "{\"kernel_slug\":\"$KERNEL_SLUG\"}" > /dev/null 2>&1
           
-          # Check response
-          if grep -q "error" trigger_response.json 2>/dev/null; then
-            echo "⚠️ Trigger response: $(cat trigger_response.json)"
-            echo "💡 Notebook will run on next manual trigger or schedule"
-          else
-            echo "✅ Kaggle execution triggered successfully!"
+          echo "⏳ Waiting for Kaggle queue to start (~90s)..."
+          sleep 90
+          
+          # 🔄 POLLING & LOG STREAMING LOOP
+          TIMEOUT=1800  # 30 minutes max
+          INTERVAL=30   # Check every 30 seconds
+          ELAPSED=0
+          LAST_LOG_LINE=0
+          
+          echo "::group::📜 KAGGLE LIVE LOGS (Updates every 30s)"
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            # Check status
+            STATUS_OUTPUT=$(kaggle kernels status $KAGGLE_USERNAME/$KERNEL_SLUG 2>/dev/null)
+            STATUS=$(echo "$STATUS_OUTPUT" | grep -oi "running\|complete\|error\|queued" | tail -1)
+            
+            echo "📊 [$((ELAPSED/60))m ${ELAPSED}s] Kaggle Status: $STATUS"
+            
+            if [ "$STATUS" = "complete" ]; then
+              echo "✅ Kaggle execution finished successfully!"
+              break
+            elif [ "$STATUS" = "error" ]; then
+              echo "❌ Kaggle execution failed!"
+              # Dump final logs for debugging
+              kaggle kernels output $KAGGLE_USERNAME/$KERNEL_SLUG -p /tmp 2>/dev/null
+              [ -f /tmp/output.txt ] && cat /tmp/output.txt
+              exit 1
+            fi
+            
+            # Fetch & stream ONLY new log lines
+            kaggle kernels output $KAGGLE_USERNAME/$KERNEL_SLUG -p /tmp 2>/dev/null
+            if [ -f /tmp/output.txt ]; then
+              TOTAL_LINES=$(wc -l < /tmp/output.txt)
+              if [ "$TOTAL_LINES" -gt "$LAST_LOG_LINE" ]; then
+                tail -n +$((LAST_LOG_LINE + 1)) /tmp/output.txt
+                LAST_LOG_LINE=$TOTAL_LINES
+              fi
+            fi
+            
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          echo "::endgroup::"
+          
+          if [ "$STATUS" != "complete" ]; then
+            echo "⚠️ Timeout reached. Check Kaggle manually if needed."
+            kaggle kernels output $KAGGLE_USERNAME/$KERNEL_SLUG -p /tmp 2>/dev/null
+            [ -f /tmp/output.txt ] && cat /tmp/output.txt
           fi
-          
-          # Optional: Monitor status (uncomment if needed)
-          # sleep 30
-          # kaggle kernels status $KAGGLE_USERNAME/content-factory-engine
-
       # 7. Final log
       - name: Final Status
         run: |
