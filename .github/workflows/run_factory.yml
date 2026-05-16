@@ -258,4 +258,4 @@ jobs:
           
           # Push to Kaggle (Assumes you have a Kaggle notebook named 'content-factory-engine')
           # NOTE: Replace 'YOUR_KAGGLE_USERNAME' below with your actual Kaggle username!
-          kaggle kernels push -p . || echo "⚠️ Kaggle push failed (check metadata id)"
+          kaggle kernels push -p /muhammadasjad2008/content-factory-engine. || echo "⚠️ Kaggle push failed (check metadata id)"
