@@ -1,4 +1,4 @@
-name: Content Factory Orchestrator (Marketplace Action)
+name: Content Factory Orchestrator (Official CLI)
 
 on:
   schedule:
@@ -16,15 +16,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Setup Python (for queue processing)
+      # 2. Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      # 3. Install dependencies for queue processing
+      # 3. Install dependencies
       - name: Install Dependencies
-        run: pip install requests openai
+        run: pip install requests openai kaggle
 
       # 4. Process queue → generate pipeline_data.json
       - name: Process Queue & Generate Script
@@ -68,7 +68,7 @@ jobs:
           
           with open('pipeline_data.json', 'w') as f:
               json.dump({
-                  "reel_url": pick['url"], "shortcode": sc, "username": user,
+                  "reel_url": pick['url'], "shortcode": sc, "username": user,
                   "script_text": script,
                   "youtube_title": f"AI Hack #shorts",
                   "youtube_description": f"Tip from @{user}. #ai",
@@ -92,28 +92,38 @@ jobs:
           git add -f reel_queue.json pipeline_data.json
           git diff-index --quiet HEAD -- || git commit -m "Auto: queued reel [skip ci]" && git push || true
 
-      # 6. 🔥 PUSH & RUN KAGGLE USING MARKETPLACE ACTION
-      - name: Run Kaggle Notebook
-        uses: itrushh/kaggle-script-action@v1
-        with:
-          # Your Kaggle credentials
-          username: ${{ secrets.KAGGLE_USERNAME }}
-          api-key: ${{ secrets.KAGGLE_KEY }}
+      # 6. 🔥 PUSH TO KAGGLE (Official CLI - Working Method)
+      - name: Push to Kaggle
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          # Create kaggle.json with Python (avoids shell escaping issues)
+          python3 -c "
+          import json, os
+          creds = {'username': os.environ['KAGGLE_USERNAME'], 'key': os.environ['KAGGLE_KEY']}
+          os.makedirs(os.path.expanduser('~/.kaggle'), exist_ok=True)
+          with open(os.path.expanduser('~/.kaggle/kaggle.json'), 'w') as f:
+              json.dump(creds, f)
+          "
+          chmod 600 ~/.kaggle/kaggle.json
           
-          # Target notebook (must match your Kaggle URL exactly)
-          kernel: "muhammadasjad2008/content-factory-engine"
+          # Verify auth works
+          echo "🧪 Testing Kaggle auth..."
+          if kaggle kernels list -m 1 --csv 2>&1 | grep -q .; then
+            echo "✅ Auth successful"
+          else
+            echo "❌ Auth failed. Check KAGGLE_KEY secret."
+            exit 1
+          fi
           
-          # Push the notebook code from current directory
-          push: true
-          push-path: "."
+          # Push notebook (path = current directory = repo root)
+          echo "🚀 Pushing to Kaggle..."
+          kaggle kernels push -p .
           
-          # Wait for execution to complete and stream logs to GitHub
-          wait: true
-          timeout: 1800  # 30 minutes max wait
-          
-          # Optional: Show verbose output
-          verbose: true
-
+          echo "✅ Pushed to Kaggle."
+          echo "🔗 Notebook: https://www.kaggle.com/muhammadasjad2008/content-factory-engine"
+          echo "💡 Enable 'Run on push' in Kaggle settings for auto-execution."
 
 # name: Content Factory Orchestrator
 
