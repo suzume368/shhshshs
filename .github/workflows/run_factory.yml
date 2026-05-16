@@ -84,41 +84,52 @@ jobs:
           print(f"✅ Queued: {pick['url']}")
           EOF
 
-      # 5. Commit & Push (Triggers GitHub → Kaggle Sync)
+      # 5. Commit & Push Data
       - name: Commit & Push Data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f reel_queue.json pipeline_data.json
           git diff-index --quiet HEAD -- || git commit -m "Auto: queued reel [skip ci]" && git push || true
-          echo "✅ Data committed. Kaggle sync will detect update within ~60s."
+          echo "✅ Data committed into GitHub master feed."
 
-      # 6. 🔥 TRIGGER KAGGLE EXECUTION (API v1 + Sync Wait)
-      - name: Trigger Kaggle Execution
+      # 6. 🔥 SECURE KAGGLE HANDSHAKE & DIRECT EXECUTION DISPATCH
+      - name: Trigger Kaggle GPU Notebook Execution
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          # 1. Wait for GitHub-Kaggle sync to register the new version
-          echo "⏳ Waiting 50s for Kaggle-GitHub sync to register..."
-          sleep 50
-          
-          # 2. Trigger execution via Kaggle API v1
-          echo "🔥 Triggering notebook execution via API..."
-          # 1. Create the system folder where the Kaggle CLI looks for authentication files
+          # Create system folder structure for Kaggle's engine configuration
           mkdir -p ~/.kaggle
-        
-           # 2. Re-create the secure credentials token on the fly
+          
+          # Inject secure API Token into system directory paths on the fly
           echo "{\"username\":\"$KAGGLE_USERNAME\",\"key\":\"$KAGGLE_KEY\"}" > ~/.kaggle/kaggle.json
           chmod 600 ~/.kaggle/kaggle.json
-        
-           # 3. Fire the API push trigger using the metadata file parameters
-           # This pushes 'notebook.py' and instantly boots up the Kaggle server on a T4 GPU
-           kaggle kernels push -p . --accelerator "NvidiaTeslaT4"
           
-           echo "🔗 Monitor progress: https://www.kaggle.com/code/muhammadasjad2008/content-factory-engine"
-
-      
+          # Construct the matching metadata control mapping on the fly inside workspace roots
+          cat << 'EOF' > kernel-metadata.json
+          {
+            "id": "muhammadasjad2008/content-factory-engine",
+            "title": "Content Factory Engine",
+            "code_file": "notebook.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": "true",
+            "enable_gpu": "true",
+            "enable_internet": "true",
+            "dataset_sources": [],
+            "competition_sources": [],
+            "kernel_sources": []
+          }
+          EOF
+          
+          # Fire the programmatic kernel dispatch API push command
+          echo "🚀 Pushing pipeline modifications and launching Kaggle GPU Server..."
+          kaggle kernels push -p .
+          
+          echo "✅ Execution package received by Kaggle. GPU instance is actively processing."
+          echo "🔗 Monitor progress directly at: https://www.kaggle.com/code/muhammadasjad2008/content-factory-engine"
+ 
 # name: Content Factory Orchestrator
 
 # on:
