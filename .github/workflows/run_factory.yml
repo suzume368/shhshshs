@@ -1,5 +1,4 @@
-
-name: Content Factory Orchestrator (One-Click + Logs)
+name: Content Factory Orchestrator (Notebook)
 
 on:
   schedule:
@@ -7,7 +6,7 @@ on:
   workflow_dispatch:         # Manual one-click trigger
 
 jobs:
-  automate-all:
+  push-notebook:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,11 +22,11 @@ jobs:
         with:
           python-version: '3.10'
 
-      # 3. Install dependencies
+      # 3. Install dependencies for queue processing
       - name: Install Dependencies
-        run: pip install requests openai kaggle
+        run: pip install requests openai
 
-      # 4. Process queue, generate script, create pipeline_data.json
+      # 4. Process queue & generate pipeline_data.json
       - name: Process Queue & Generate Script
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -121,124 +120,25 @@ jobs:
             git push
           fi
 
-      # 6. 🔥 PUSH TO KAGGLE + STREAM LOGS (BULLETPROOF VERSION)
-      - name: Push to Kaggle & Stream Logs
+      # 6. 🔥 PUSH NOTEBOOK TO KAGGLE (Simple & Reliable)
+      - name: Push Notebook to Kaggle
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KERNEL_ID: "${{ secrets.KAGGLE_USERNAME }}/content-factory-engine"
         run: |
-          set -e  # Exit on error
+          echo "🔐 Setting up Kaggle auth..."
+          mkdir -p ~/.kaggle
+          printf '{"username":"%s","key":"%s"}\n' "$KAGGLE_USERNAME" "$KAGGLE_KEY" > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
           
-          echo "🔐 Setting up Kaggle authentication..."
+          pip install -q kaggle
           
-          # ✅ CRITICAL: Use $HOME instead of ~ for reliable path expansion
-          KAGGLE_DIR="$HOME/.kaggle"
-          mkdir -p "$KAGGLE_DIR"
+          echo "🚀 Pushing notebook to Kaggle..."
+          kaggle kernels push -p .
           
-          # ✅ CRITICAL: Use printf for reliable JSON creation (handles special chars)
-          printf '{"username":"%s","key":"%s"}\n' "$KAGGLE_USERNAME" "$KAGGLE_KEY" > "$KAGGLE_DIR/kaggle.json"
-          chmod 600 "$KAGGLE_DIR/kaggle.json"
-          
-          # Verify file exists and is valid
-          echo "📄 Verifying kaggle.json..."
-          if [ ! -f "$KAGGLE_DIR/kaggle.json" ]; then
-            echo "❌ ERROR: kaggle.json not created at $KAGGLE_DIR/kaggle.json"
-            exit 1
-          fi
-          python3 -c "import json,os; f=os.environ['HOME']+'/.kaggle/kaggle.json'; d=json.load(open(f)); print(f'✅ Valid: user={d[\"username\"]}, key_len={len(d[\"key\"])}')"
-          
-          # Install/upgrade Kaggle CLI
-          echo "📦 Ensuring latest Kaggle CLI..."
-          pip install --upgrade -q kaggle
-          
-          # Test authentication with a lightweight command
-          echo "🧪 Testing authentication..."
-          if ! kaggle kernels list -m 1 --csv 2>&1 | head -1 | grep -q .; then
-            echo "❌ Auth test failed. Check KAGGLE_KEY secret."
-            echo "💡 Tip: Regenerate token at https://www.kaggle.com/settings → API"
-            exit 1
-          fi
-          echo "✅ Authentication successful!"
-          
-          # Push code to Kaggle
-          echo "🚀 Pushing code to Kaggle..."
-          if ! kaggle kernels push -p . 2>&1 | tee push.log; then
-            echo "❌ Push failed:"
-            cat push.log
-            exit 1
-          fi
-          echo "✅ Push successful!"
-          
-          # Wait for Kaggle to queue the run
-          echo "⏳ Waiting for Kaggle to queue execution (~60s)..."
-          sleep 60
-          
-          # 🔄 POLLING & LOG STREAMING LOOP
-          echo "::group::📜 KAGGLE LIVE LOGS (Updates every 30s)"
-          
-          TIMEOUT=1800  # 30 minutes max
-          INTERVAL=30   # Poll every 30 seconds
-          ELAPSED=0
-          LAST_LOG_HASH=""
-          
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            # Get status
-            STATUS_LINE=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null || echo "unknown")
-            STATUS=$(echo "$STATUS_LINE" | grep -oi "running\|complete\|error\|queued" | tail -1 || echo "unknown")
-            
-            echo "📊 [$((ELAPSED/60))m ${ELAPSED}s] Status: $STATUS"
-            
-            # Check terminal states
-            if [ "$STATUS" = "complete" ]; then
-              echo "✅ Execution finished successfully!"
-              break
-            elif [ "$STATUS" = "error" ]; then
-              echo "❌ Execution failed. Fetching error logs..."
-              kaggle kernels output "$KERNEL_ID" -p /tmp/kaggle_output 2>/dev/null || true
-              if [ -f /tmp/kaggle_output/README.md ]; then
-                echo "📄 Error details:"
-                cat /tmp/kaggle_output/README.md
-              fi
-              exit 1
-            fi
-            
-            # Fetch and stream NEW log lines only (avoid spam)
-            kaggle kernels output "$KERNEL_ID" -p /tmp/kaggle_output 2>/dev/null || true
-            if [ -d /tmp/kaggle_output ] && [ -f /tmp/kaggle_output/README.md ]; then
-              CURRENT_HASH=$(md5sum /tmp/kaggle_output/README.md 2>/dev/null | cut -d' ' -f1 || echo "")
-              if [ "$CURRENT_HASH" != "$LAST_LOG_HASH" ] && [ -n "$CURRENT_HASH" ]; then
-                echo "📥 New logs received:"
-                cat /tmp/kaggle_output/README.md
-                LAST_LOG_HASH="$CURRENT_HASH"
-              fi
-            fi
-            
-            sleep $INTERVAL
-            ELAPSED=$((ELAPSED + INTERVAL))
-          done
-          
-          echo "::endgroup::"
-          
-          # Final check
-          if [ "$STATUS" != "complete" ]; then
-            echo "⚠️ Timeout reached or incomplete. Final logs:"
-            kaggle kernels output "$KERNEL_ID" -p /tmp/kaggle_output 2>/dev/null || true
-            [ -f /tmp/kaggle_output/README.md ] && cat /tmp/kaggle_output/README.md
-            echo "💡 Check Kaggle manually: https://www.kaggle.com/$KERNEL_ID"
-          fi
-          
-          echo "✅ Kaggle step complete!"
-
-      # 7. Final summary
-      - name: Final Summary
-        run: |
-          echo "========================================="
-          echo "✅ ONE-CLICK AUTOMATION COMPLETE"
-          echo "📁 pipeline_data.json pushed to Kaggle"
-          echo "📜 Logs streamed to this console"
-          echo "🔗 Monitor anytime: https://www.kaggle.com/${{ secrets.KAGGLE_USERNAME }}/content-factory-engine"
-          echo "========================================="
+          echo "✅ Push complete!"
+          echo "📅 Kaggle will auto-run on its schedule (check notebook settings)"
+          echo "🔗 Monitor: https://www.kaggle.com/$KAGGLE_USERNAME/content-factory-engine"
 
 # name: Content Factory Orchestrator (Duplicate-Proof)
 
