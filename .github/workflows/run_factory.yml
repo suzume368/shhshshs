@@ -95,39 +95,36 @@ jobs:
 
           EOF
           
-          # 6. Trigger Kaggle Execution (With environment variables fixed)
+         # 6. Trigger Kaggle Execution (Using foolproof echo format)
       - name: Trigger Kaggle GPU Notebook Execution
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          # Construct the metadata file configuration dynamically in the workspace root
-          cat << 'EOF' > kernel-metadata.json
-          {
-            "id": "muhammadasjad2008/content-factory-engine",
-            "title": "Content Factory Engine",
-            "code_file": "content-factory-engine.ipynb",
-            "language": "python",
-            "kernel_type": "notebook",
-            "is_private": "true",
-            "enable_gpu": "true",
-            "enable_internet": "true",
-            "dataset_sources": [],
-            "competition_sources": [],
-            "kernel_sources": []
-          }
-          EOF
+          # Write the metadata file line-by-line using basic echo to kill EOF bugs completely
+          echo '{' > kernel-metadata.json
+          echo '  "id": "muhammadasjad2008/content-factory-engine",' >> kernel-metadata.json
+          echo '  "title": "Content Factory Engine",' >> kernel-metadata.json
+          echo '  "code_file": "content-factory-engine.ipynb",' >> kernel-metadata.json
+          echo '  "language": "python",' >> kernel-metadata.json
+          echo '  "kernel_type": "notebook",' >> kernel-metadata.json
+          echo '  "is_private": "true",' >> kernel-metadata.json
+          echo '  "enable_gpu": "true",' >> kernel-metadata.json
+          echo '  "enable_internet": "true",' >> kernel-metadata.json
+          echo '  "dataset_sources": [],' >> kernel-metadata.json
+          echo '  "competition_sources": [],' >> kernel-metadata.json
+          echo '  "kernel_sources": []' >> kernel-metadata.json
+          echo '}' >> kernel-metadata.json
           
-          # Force the Kaggle CLI to read values straight out of global memory tokens
+          # Force credentials directly into system environment arrays
           export KAGGLE_USERNAME="$KAGGLE_USERNAME"
           export KAGGLE_KEY="$KAGGLE_KEY"
           
-          echo "🚀 Pushing pipeline modifications via environment memory array lines..."
+          echo "🚀 Pushing pipeline modifications to Kaggle Server..."
           kaggle kernels push -p .
           
-          echo "✅ Handshake complete! Kaggle GPU server has accepted credentials and is spinning up."
+          echo "✅ Handshake complete! Kaggle GPU engine is spinning up."
           echo "🔗 Tracking Link: https://kaggle.com"
- 
 # name: Content Factory Orchestrator
 
 # on:
