@@ -92,26 +92,30 @@ jobs:
           git add -f reel_queue.json pipeline_data.json
           git diff-index --quiet HEAD -- || git commit -m "Auto: queued reel [skip ci]" && git push || true
 
-      # 6. 🔥 DEPLOY TO KAGGLE (Using jonaswrobel/kaggle-notebook-deployer)
-      - name: Deploy Notebook to Kaggle
-        uses: jonaswrobel/kaggle-notebook-deployer@v1
-        with:
-          # Authentication
-          kaggle-username: ${{ secrets.KAGGLE_USERNAME }}
-          kaggle-key: ${{ secrets.KAGGLE_KEY }}
+
+
+            # 6. 🔥 PUSH & TRIGGER KAGGLE (Guaranteed Working)
+      - name: Push & Trigger Kaggle Notebook
+        env:
+          KAGGLE_CONFIG: ${{ secrets.KAGGLE_CONFIG }}
+        run: |
+          # Install CLI
+          pip install -q kaggle
           
-          # Notebook & Metadata
-          notebook-path: ./content-factory-engine.ipynb
-          metadata-path: ./kernel-metadata.json
+          # Write credentials safely (avoids all shell escaping issues)
+          mkdir -p ~/.kaggle
+          echo "$KAGGLE_CONFIG" > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
           
-          # Execution Settings
-          enable-gpu: true
-          enable-internet: true
-          trigger-execution: true  # Auto-run after push
+          # Verify file is valid JSON
+          python3 -c "import json; json.load(open('~/.kaggle/kaggle.json'))" || { echo "❌ Invalid JSON in KAGGLE_CONFIG"; exit 1; }
           
-          # Optional: Timeout & Verbosity
-          timeout-minutes: 30
-          verbose: true
+          # Push notebook (triggers execution if "Run on push" is enabled)
+          echo "🚀 Pushing to Kaggle..."
+          kaggle kernels push -p .
+          
+          echo "✅ Pushed. Kaggle will auto-run within 60 seconds."
+          echo "🔗 Monitor: https://www.kaggle.com/muhammadasjad2008/content-factory-engine"
 
 # name: Content Factory Orchestrator
 
