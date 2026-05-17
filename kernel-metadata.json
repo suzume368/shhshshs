@@ -1,9 +1,9 @@
 {
   "id": "muhammadasjad2008/content-factory-engine",
   "title": "Content Factory Engine",
-  "code_file": "content-factory-engine.ipynb",
+  "code_file": "summa.py",
   "language": "python",
-  "kernel_type": "notebook",
+  "kernel_type": "script",
   "is_private": "true",
   "enable_gpu": "true",
   "enable_internet": "true",
