@@ -1,5 +1,4 @@
-
-name: Content Factory Orchestrator (Python API Trigger)
+name: Content Factory Data Pipeline
 
 on:
   schedule:
@@ -7,7 +6,7 @@ on:
   workflow_dispatch:         # Manual one-click trigger
 
 jobs:
-  automate:
+  prepare-data:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,7 +24,7 @@ jobs:
 
       # 3. Install dependencies
       - name: Install Dependencies
-        run: pip install requests openai kaggle
+        run: pip install requests openai
 
       # 4. Process queue → generate pipeline_data.json
       - name: Process Queue & Generate Script
@@ -85,34 +84,24 @@ jobs:
           print(f"✅ Queued: {pick['url']}")
           EOF
 
-      # 5. Commit & Push (Triggers GitHub → Kaggle Sync)
+      # 5. Commit & Push (Makes data available to Kaggle via Raw URL)
       - name: Commit & Push Data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f reel_queue.json pipeline_data.json kaggle_deploy/ trigger.py
+          git add -f reel_queue.json pipeline_data.json
           git diff-index --quiet HEAD -- || git commit -m "Auto: queued reel [skip ci]" && git push || true
-          echo "✅ Data committed. GitHub-Kaggle sync will detect update within ~60s."
+          echo "✅ Data committed. Kaggle will fetch via Raw URL within ≤15 mins."
 
-      # 6. 🔥 TRIGGER KAGGLE VIA OFFICIAL PYTHON API
-      - name: Trigger Kaggle Execution via Python API
-        env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KAGGLE_PUSH_FOLDER: "./kaggle_deploy"
-          KAGGLE_KERNEL_ID: "muhammadasjad2008/content-factory-engine"
-          KAGGLE_WAIT_MINUTES: "0"
-          KAGGLE_SYNC_WAIT_SECONDS: "50"
-        run: python3 trigger.py
-
-      # 7. Final Status
+      # 6. Final Status
       - name: Final Status
         run: |
           echo "========================================="
           echo "✅ ONE-CLICK AUTOMATION COMPLETE"
-          echo "📁 pipeline_data.json committed"
-          echo "🔥 Kaggle execution triggered via Python API"
-          echo "🔗 Monitor: https://www.kaggle.com/muhammadasjad2008/content-factory-engine"
+          echo "📁 pipeline_data.json committed to repo"
+          echo "🔗 Kaggle fetches from: https://raw.githubusercontent.com/muhammadasjad2008/content-factory-orchestrator/main/pipeline_data.json"
+          echo "⏳ Kaggle scheduler runs every 15 mins (smart-check exits in 5s if no new data)"
+          echo "🔗 Monitor Kaggle: https://www.kaggle.com/muhammadasjad2008/content-factory-engine"
           echo "========================================="
 
 
