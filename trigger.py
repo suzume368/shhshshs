@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 
 # 1. Fetch credentials safely from the execution environment
 KAGGLE_USERNAME = os.environ.get("KAGGLE_USERNAME")
@@ -48,13 +49,15 @@ with open("kernel-metadata.json", "w") as f:
     json.dump(meta_payload, f, indent=2)
 print("✅ kernel-metadata.json created.")
 
-# 4. Fire the official Kaggle API client trigger via safe system sub-shell lines
+# 4. Fire the Kaggle API client directly via the active Python module process
 print("[3/3] Launching official Kaggle push trigger protocol...")
-exit_code = os.system("kaggle kernels push -p .")
+
+# Using sys.executable guarantees it uses the exact same environment where kaggle was pip-installed
+exit_code = os.system(f'"{sys.executable}" -m kaggle kernels push -p .')
 
 if exit_code == 0:
     print("🚀 SUCCESS! The trigger payload cleared gates safely.")
     print("🔗 Monitor progress here: https://kaggle.com")
 else:
-    print(f"❌ Critical Error: Kaggle CLI push failed with exit status code: {exit_code}")
+    print(f"❌ Critical Error: Kaggle execution push failed with status code: {exit_code}")
     exit(1)
