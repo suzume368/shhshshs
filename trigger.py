@@ -48,7 +48,7 @@ with open("kernel-metadata.json", "w") as f:
     json.dump(meta_payload, f, indent=2)
 print("✅ kernel-metadata.json created.")
 
-# 4. 🔥 FIX: IMPORT KAGGLE CORE NATIVELY TO EXECUTE THE PUSH
+# 4. 🔥 FIX: CALL THE CORRECT UNIVERSAL KERNELS_PUSH METHOD
 print("[3/3] Launching official Kaggle push trigger protocol natively...")
 
 try:
@@ -59,10 +59,9 @@ try:
     api = KaggleApi()
     api.authenticate()
     
-    # Execute the push function directly through code logic
-    # This pushes 'notebook.py' and your 'pipeline_data.json' packet straight to Kaggle's GPU server
+    # Execute the push function directly through universal standard attributes
     print("📡 Uploading files and initiating Kaggle T4 GPU instance...")
-    api.kernels_push_with_http_info(os.getcwd())
+    api.kernels_push(os.getcwd())
     
     print("🚀 SUCCESS! The trigger payload cleared gates safely via native code lines.")
     print("🔗 Monitor progress here: https://kaggle.com")
