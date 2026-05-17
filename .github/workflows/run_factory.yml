@@ -101,7 +101,7 @@ jobs:
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
           KAGGLE_PUSH_FOLDER: "./kaggle_deploy"
           KAGGLE_KERNEL_ID: "muhammadasjad2008/content-factory-engine"
-          KAGGLE_WAIT_MINUTES: "0"  # 0 = fire-and-forget; set to 30 to wait for completion
+          KAGGLE_WAIT_MINUTES: "0"
           KAGGLE_SYNC_WAIT_SECONDS: "50"
         run: python3 trigger.py
 
