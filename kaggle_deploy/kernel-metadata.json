@@ -1,0 +1,13 @@
+{
+  "id": "muhammadasjad2008/content-factory-engine",
+  "title": "Content Factory Engine",
+  "code_file": "runner.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_bindings": [],
+  "kernel_bindings": [],
+  "competition_bindings": []
+}
