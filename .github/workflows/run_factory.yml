@@ -468,111 +468,119 @@ jobs:
         run: pip install requests openai
 
       # 4. Run the Queue Logic (Checks Duplicates & Generates Script)
+      #4. Process queue → generate pipeline_data.json
       - name: Process Queue & Generate Script
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          python3 << 'PYTHON_EOF'
-          import os, json, requests, re
+          python3 << 'EOF'
+          import os, json, re
           from datetime import datetime, timezone
           from openai import OpenAI
-
-          print("🧠 Starting Queue Processor...")
-
-          # Load Queue
+          
           with open('reel_queue.json', 'r') as f:
-              queue_data = json.load(f)
-
-          queue = queue_data.get('queue', [])
-          # Build a set of already processed URLs for fast lookup
-          processed_urls = {item['url'] for item in queue_data.get('processed', [])}
+              data = json.load(f)
           
-          print(f"📊 Queue Status: {len(queue)} in line, {len(processed_urls)} done.")
-
-          next_reel = None
-
-          # Find first valid, unprocessed reel
-          for i, reel in enumerate(queue):
-              url = reel.get('url', '').strip()
-              
-              # 1. Basic validation
-              if 'instagram.com/reel/' not in url:
-                  continue
-              
-              # 2. DUPLICATE CHECK
-              if url in processed_urls:
-                  print(f"⏭️ Skipped (Duplicate): {url}")
-                  continue
-              
-              # If we get here, we found a fresh reel!
-              next_reel = reel
-              print(f"🎯 SELECTED NEW REEL: {url}")
-              break
-
-          if not next_reel:
-              print("✅ No new reels to process (or all duplicates). Exiting.")
+          queue = data.get('queue', [])
+          processed = {p['url'] for p in data.get('processed', [])}
+          
+          pick = None
+          for r in queue:
+              if r['url'] not in processed and 'instagram.com/reel/' in r['url']:
+                  pick = r
+                  break
+          
+          if not pick:
+              print("✅ No new reels. Exiting.")
               exit(0)
-
-          # Extract Shortcode for tracking
-          match = re.search(r'/reel/([^/?]+)', next_reel['url'])
-          shortcode = match.group(1) if match else "unknown"
-          username = next_reel.get('username', 'unknown')
-
           
-
-                   # ✅ FIXED: Create pipeline_data.json with error handling & proper encoding
-          print("📝 Creating pipeline_data.json...")
+          sc = re.search(r'/reel/([^/?]+)', pick['url']).group(1)
+          user = pick.get('username', 'unknown')
           
-          pipeline = {
-              "reel_url": next_reel['url'],
-              "shortcode": shortcode,
-              "username": username,
-              "script_text": "",  # Empty since using original video content
-              "youtube_title": f"AI Tip You Need To Know #shorts",
-              "youtube_description": f"Analysis of @{username}'s content. #ai #tech",
-              "youtube_tags": ["AI", "Tech", "Shorts"],
-              "use_original_script": True,  # Flag for Kaggle
-              "created_at": datetime.now(timezone.utc).isoformat()
-          }
-
-          try:
-              # Write with explicit encoding and flush
-              with open('pipeline_data.json', 'w', encoding='utf-8') as f:
-                  json.dump(pipeline, f, indent=2, ensure_ascii=False)
-                  f.flush()  # Force write to disk
-                  os.fsync(f.fileno())  # Ensure data is physically written
-              
-              # Verify file was created and has content
-              if os.path.exists('pipeline_data.json') and os.path.getsize('pipeline_data.json') > 0:
-                  print(f"✅ pipeline_data.json created successfully ({os.path.getsize('pipeline_data.json')} bytes)")
-                  # Optional: Print first 200 chars for debugging
-                  with open('pipeline_data.json', 'r', encoding='utf-8') as f:
-                      preview = f.read(200)
-                      print(f"📄 Preview: {preview}...")
-              else:
-                  print("❌ ERROR: pipeline_data.json is empty or missing after write")
-                  exit(1)
-                  
-          except Exception as e:
-              print(f"❌ FAILED to write pipeline_data.json: {e}")
-              import traceback
-              traceback.print_exc()
-              exit(1)
-
-          # Mark as "in_progress" in Queue to prevent race conditions
-          entry = {
-              "url": next_reel['url'],
-              "username": username,
-              "status": "in_progress",
-              "started_at": datetime.now(timezone.utc).isoformat()
-          }
-          queue_data.setdefault('processed', []).append(entry)
+          client = OpenAI(api_key=os.environ['GROQ_API_KEY'], base_url='https://api.groq.com/openai/v1')
+          resp = client.chat.completions.create(
+              model="llama-3.3-70b-versatile",
+              messages=[
+                  {"role":"system","content":"YouTube Shorts expert. Max 35 words. Bold hook. One tip. CTA."},
+                  {"role":"user","content":f"Write a 14s script inspired by @{user}"}
+              ],
+              max_tokens=100
+          )
+          script = resp.choices[0].message.content.strip()
           
+          with open('pipeline_data.json', 'w') as f:
+              json.dump({
+                  "reel_url": pick['url'], "shortcode": sc, "username": user,
+                  "script_text": " ",
+                  "youtube_title": f"AI Hack #shorts",
+                  "youtube_description": f"Tip from @{user}. #ai",
+                  "youtube_tags": ["AI","Shorts"]
+              }, f, indent=2)
+          
+          data.setdefault('processed', []).append({
+              "url": pick['url'], "username": user,
+              "status": "in_progress", "started_at": datetime.now(timezone.utc).isoformat()
+          })
           with open('reel_queue.json', 'w') as f:
-              json.dump(queue_data, f, indent=2)
+              json.dump(data, f, indent=2)
+          print(f"✅ Queued: {pick['url']}")
+          EOF
 
-          print("✅ Files ready for Kaggle trigger.")
-          PYTHON_EOF
+          
+
+          #          # ✅ FIXED: Create pipeline_data.json with error handling & proper encoding
+          # print("📝 Creating pipeline_data.json...")
+          
+          # pipeline = {
+          #     "reel_url": next_reel['url'],
+          #     "shortcode": shortcode,
+          #     "username": username,
+          #     "script_text": "",  # Empty since using original video content
+          #     "youtube_title": f"AI Tip You Need To Know #shorts",
+          #     "youtube_description": f"Analysis of @{username}'s content. #ai #tech",
+          #     "youtube_tags": ["AI", "Tech", "Shorts"],
+          #     "use_original_script": True,  # Flag for Kaggle
+          #     "created_at": datetime.now(timezone.utc).isoformat()
+          # }
+
+          # try:
+          #     # Write with explicit encoding and flush
+          #     with open('pipeline_data.json', 'w', encoding='utf-8') as f:
+          #         json.dump(pipeline, f, indent=2, ensure_ascii=False)
+          #         f.flush()  # Force write to disk
+          #         os.fsync(f.fileno())  # Ensure data is physically written
+              
+          #     # Verify file was created and has content
+          #     if os.path.exists('pipeline_data.json') and os.path.getsize('pipeline_data.json') > 0:
+          #         print(f"✅ pipeline_data.json created successfully ({os.path.getsize('pipeline_data.json')} bytes)")
+          #         # Optional: Print first 200 chars for debugging
+          #         with open('pipeline_data.json', 'r', encoding='utf-8') as f:
+          #             preview = f.read(200)
+          #             print(f"📄 Preview: {preview}...")
+          #     else:
+          #         print("❌ ERROR: pipeline_data.json is empty or missing after write")
+          #         exit(1)
+                  
+          # except Exception as e:
+          #     print(f"❌ FAILED to write pipeline_data.json: {e}")
+          #     import traceback
+          #     traceback.print_exc()
+          #     exit(1)
+
+          # # Mark as "in_progress" in Queue to prevent race conditions
+          # entry = {
+          #     "url": next_reel['url'],
+          #     "username": username,
+          #     "status": "in_progress",
+          #     "started_at": datetime.now(timezone.utc).isoformat()
+          # }
+          # queue_data.setdefault('processed', []).append(entry)
+          
+          # with open('reel_queue.json', 'w') as f:
+          #     json.dump(queue_data, f, indent=2)
+
+          # print("✅ Files ready for Kaggle trigger.")
+          # PYTHON_EOF
 
       # 5. Commit changes back to GitHub
       - name: Commit Updates
