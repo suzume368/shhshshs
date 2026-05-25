@@ -493,8 +493,13 @@ jobs:
           if not pick:
               print("✅ No new reels. Exiting.")
               exit(0)
+
+          #
+          # sc = re.search(r'/reel/([^/?]+)', pick['url']).group(1)
+          #
           
-          sc = re.search(r'/reel/([^/?]+)', pick['url']).group(1)
+          sc_match = re.search(r'/reel/([^/?]+)', pick['url'])
+          sc = sc_match.group(1) if sc_match else "unknown"
           user = pick.get('username', 'unknown')
           
           client = OpenAI(api_key=os.environ['GROQ_API_KEY'], base_url='https://api.groq.com/openai/v1')
