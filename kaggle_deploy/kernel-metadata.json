@@ -7,7 +7,7 @@
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "dataset_bindings": [],
+  "dataset_sources": ["muhammadasjad2008/cat-reactions-vault"],
   "kernel_bindings": [],
   "competition_bindings": []
 }
