@@ -735,6 +735,8 @@
 # print("\n🏆 PIPELINE COMPLETE!")
 
 
+
+# %% [code]
 # %% [code]
 # %% [code]
 # %% [code]
@@ -913,11 +915,20 @@ output_path = execute_unmangled_ytdlp_download(
 )
 
 
+# ==========================================
+# 4. STEP 1: EXECUTE ADAPTIVE AI CLOAK & NATIVE FRAME BAKING
+# ==========================================
+print("🚀 Step 1: Initiating adaptive background-matching visual cloaking canvas...")
 
-# ==========================================
-# 4. STEP 1: EXECUTE ALL VIDEO EDITING TRANSFORMATIONS FIRST
-# ==========================================
-print("🚀 Step 1: Initiating full visual editing transformation canvas...")
+import os  # FIXED: Crucial import to allow os.path operations at the end
+import gc
+import cv2
+import torch
+import random
+import subprocess
+import numpy as np
+import pytesseract
+from pytesseract import Output
 
 # Define internal rendering layer workspace file paths explicitly
 EDITED_SOURCE_ONLY = "/kaggle/working/edited_source_only.mp4"
@@ -929,53 +940,175 @@ AUDIO1_WAV = "/kaggle/working/track1.wav"
 AUDIO2_WAV = "/kaggle/working/track2.wav"
 MERGED_AUDIO_WAV = "/kaggle/working/merged_audio.wav"
 
-import gc
+# --- SYSTEM CACHE PURGE ENGINE ---
 try:
     if 'L' in locals(): del L
     if 'post' in locals(): del post
 except Exception:
     pass
+
+# FIXED: Explicitly force clear old execution data structures
+watermark_bounding_boxes = []
+unique_boxes = [] 
+
 gc.collect()
 torch.cuda.empty_cache()
 
-import cv2
-import pytesseract
-from pytesseract import Output
+TEMP_HEALED_MP4 = "/kaggle/working/inpainted_temp_restored.mp4"
+CLEAN_INPUT_STAGE1 = "/kaggle/working/ocr_cleaned_source.mp4"
 
-# --- AI OCR CHECKPOINT: USERNAME WATERMARK REMOVER ---
-print("👁️ Scanning frame layers for creator username text signatures...")
+# FIXED: Ensure previously locked temporary outputs are forcefully dropped before starting
+for temp_file in [TEMP_HEALED_MP4, CLEAN_INPUT_STAGE1]:
+    if os.path.exists(temp_file):
+        try:
+            os.remove(temp_file)
+        except Exception:
+            pass
+
+# --------------------------------------------------
+# PHASE A: MULTI-FRAME WATERMARK DETECTOR & ADAPTIVE FRAME BAKER
+# --------------------------------------------------
+print("👁️ Scanning frame layers for handle signatures containing '@' text tags...")
 cap = cv2.VideoCapture(output_path)
+orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-sample_frames = [int(frame_count * 0.15), int(frame_count * 0.45), int(frame_count * 0.75)]
-text_watermark_box = None
-clean_username_target = username.lower().strip()
+fps = cap.get(cv2.CAP_PROP_FPS)
+
+# Guard rail to verify the new video actually opened
+if frame_count <= 0 or orig_width == 0 or orig_height == 0:
+    cap.release()
+    raise ValueError(f"❌ Error: Cannot read the video file at {output_path}")
+
+sample_frames = [
+    int(frame_count * 0.10), 
+    int(frame_count * 0.30), 
+    int(frame_count * 0.50), 
+    int(frame_count * 0.70), 
+    int(frame_count * 0.90)
+]
 
 for idx in sample_frames:
     cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
     ret, frame = cap.read()
     if not ret: continue
+    
     gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     ocr_data = pytesseract.image_to_data(gray_frame, output_type=Output.DICT)
     
     for i in range(len(ocr_data['text'])):
-        detected_word = str(ocr_data['text'][i]).lower().strip()
-        if clean_username_target in detected_word or (len(detected_word) > 3 and detected_word in clean_username_target):
-            x, y, w, h = ocr_data['left'][i], ocr_data['top'][i], ocr_data['width'][i], ocr_data['height'][i]
-            text_watermark_box = (max(0, x-15), max(0, y-10), w+30, h+20)
-            break
-    if text_watermark_box: break
+        detected_word = str(ocr_data['text'][i]).strip().lower()
+        clean_target = str(username).strip().lower()
+        
+        if '@' in detected_word or (len(detected_word) > 2 and (detected_word in clean_target or clean_target in detected_word)):
+            x = ocr_data['left'][i]
+            y = ocr_data['top'][i]
+            w = ocr_data['width'][i]
+            h = ocr_data['height'][i]
+            
+            padding_box = (max(0, x - 12), max(0, y - 8), w + 24, h + 16)
+            watermark_bounding_boxes.append(padding_box)
+
 cap.release()
+unique_boxes = list(set(watermark_bounding_boxes))
 
-if text_watermark_box:
-    x, y, w, h = text_watermark_box
-    print(f"🎯 Watermark Matched! Scrubbing region -> X:{x}, Y:{y}, W:{w}, H:{h}")
-    CLEAN_INPUT_STAGE1 = "/kaggle/working/ocr_cleaned_source.mp4"
-    subprocess.run(["ffmpeg", "-y", "-i", output_path, "-vf", f"delogo=x={x}:y={y}:w={w}:h={h}", "-c:a", "copy", CLEAN_INPUT_STAGE1], check=True, capture_output=True)
-else:
-    print("✨ Clean Layout Check! Bypassing OCR erasure step.")
-    CLEAN_INPUT_STAGE1 = output_path
+print("🎨 Initializing Native Pixel Inpainter & Adaptive Color Matching Engine...")
+cap = cv2.VideoCapture(output_path)
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+video_writer = cv2.VideoWriter(TEMP_HEALED_MP4, fourcc, fps, (orig_width, orig_height))
 
-# --- APPLY 9:16 PORTRAIT VISUAL EDITING FILTER STACK ---
+font_face = cv2.FONT_HERSHEY_SIMPLEX
+font_scale = 0.52
+font_thickness = 1
+
+# FIXED: Wrapped processing in try/finally block to guarantee resource unlocking 
+try:
+    if unique_boxes:
+        bx, by, bw, bh = unique_boxes[0]
+        print(f"🎯 Exact native coordinate match locked -> X:{bx}, Y:{by}, W:{bw}, H:{bh}")
+        
+        (text_w, text_h), baseline = cv2.getTextSize("@AWRAM", font_face, font_scale, font_thickness)
+        tx = bx + int((bw - text_w) / 2)
+        ty = by + int((bh + text_h) / 2)
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, sample_frames[2])
+        ret, sample_img = cap.read()
+        if ret:
+            sample_zone = sample_img[max(0, by-10):min(orig_height, by+bh+10), max(0, bx-10):min(orig_width, bx+bw+10)]
+            avg_color_per_row = np.average(sample_zone, axis=0)
+            avg_color = np.average(avg_color_per_row, axis=0)
+            b_match, g_match, r_match = int(avg_color[0]), int(avg_color[1]), int(avg_color[2])
+            
+            bg_brightness = (0.299 * r_match) + (0.587 * g_match) + (0.114 * b_match)
+            
+            if bg_brightness > 127:
+                text_color = (40, 40, 40)
+                shadow_color = (220, 220, 220)
+            else:
+                text_color = (225, 225, 225)
+                shadow_color = (20, 20, 20)
+        else:
+            b_match, g_match, r_match = 30, 30, 30
+            text_color, shadow_color = (230, 230, 230), (10, 10, 10)
+            
+        print(f"🎨 Sampled Background Color Vector locked -> B:{b_match}, G:{g_match}, R:{r_match}")
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret: break
+            
+            raw_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+            cv2.rectangle(raw_mask, (bx, by), (bx + bw, by + bh), 255, -1)
+            healed_frame = cv2.inpaint(frame, raw_mask, inpaintRadius=4, flags=cv2.INPAINT_TELEA)
+            
+            overlay_roi = healed_frame[by:by+bh, bx:bx+bw].copy()
+            cv2.rectangle(overlay_roi, (0, 0), (bw, bh), (b_match, g_match, r_match), -1) 
+            
+            alpha_blend = 0.50
+            healed_frame[by:by+bh, bx:bx+bw] = cv2.addWeighted(overlay_roi, alpha_blend, healed_frame[by:by+bh, bx:bx+bw], 1.0 - alpha_blend, 0)
+            
+            cv2.putText(healed_frame, "@AWRAM", (tx, ty), font_face, font_scale, shadow_color, font_thickness + 1, cv2.LINE_AA)
+            cv2.putText(healed_frame, "@AWRAM", (tx, ty), font_face, font_scale, text_color, font_thickness, cv2.LINE_AA)
+            
+            video_writer.write(healed_frame)
+    else:
+        print("✨ Clean Layout Check! Zero handle watermarks found. Rendering fallback branding overlays...")
+        bx, by, bw, bh = int(orig_width * 0.4), int(orig_height * 0.1), 180, 45
+        (text_w, text_h), baseline = cv2.getTextSize("@AWRAM", font_face, font_scale, font_thickness)
+        tx, ty = bx + int((bw - text_w) / 2), by + int((bh + text_h) / 2)
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0) # FIXED: Reset capture device to starting frame
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret: break
+            overlay_roi = frame[by:by+bh, bx:bx+bw].copy()
+            cv2.rectangle(overlay_roi, (0, 0), (bw, bh), (20, 20, 20), -1)
+            frame[by:by+bh, bx:bx+bw] = cv2.addWeighted(overlay_roi, 0.35, frame[by:by+bh, bx:bx+bw], 0.65, 0)
+            cv2.putText(frame, "@AWRAM", (tx, ty), font_face, font_scale, (220, 220, 220), font_thickness, cv2.LINE_AA)
+            video_writer.write(frame)
+
+finally:
+    # FIXED: This block executes even if video reading crashes, forcing open files to close
+    cap.release()
+    video_writer.release()
+
+# Run audio stitching
+subprocess.run([
+    "ffmpeg", "-y", "-i", TEMP_HEALED_MP4, "-i", output_path, 
+    "-map", "0:v", "-map", "1:a?", "-c:v", "copy", "-c:a", "copy", 
+    CLEAN_INPUT_STAGE1
+], check=True, capture_output=True)
+
+if os.path.exists(TEMP_HEALED_MP4): 
+    os.remove(TEMP_HEALED_MP4)
+
+print("✅ Phase A Complete: Adaptive background color matching loop finalized successfully.")
+
+
+# --------------------------------------------------
+# PHASE B: APPLY FILTER STACK & CENTER BRAND TEXT BOX OVER BLUR
+# --------------------------------------------------
 styles = [
     "eq=contrast=1.05:brightness=0.01:saturation=1.02:gamma=0.97",
     "curves=m='0/0 0.25/0.18 0.5/0.5 0.75/0.82 1/1'",
@@ -988,12 +1121,17 @@ effects = [
 ]
 chosen_style, chosen_effect = random.choice(styles), random.choice(effects)
 
+# Mathematically centers your text handle perfectly inside the box on the final 1080x1920 layout
+text_alignment_x = f"{final_x} + ({final_w} - tw)/2"
+text_alignment_y = f"{final_y} + ({final_h} - th)/2"
+
+# Generates a sleek, custom box over the exact blurred coordinates, completely covering any smudge artifacts
 filter_complex_editing = (
     f"[0:v]scale=1080:1920,boxblur=25:5,{chosen_effect}[bg];"
     f"[0:v]scale=918:1632,{chosen_style}[main_scaled];"
     f"[bg][main_scaled]overlay=(W-w)/2:(H-h)/2,setsar=1[processed_source];"
     f"[processed_source]noise=alls=7:allf=t+u[grained];"
-    f"[grained]drawtext=text='@AWRAM':x=(w-tw)/2:y=80:fontsize=40:fontcolor=white@0.55:box=1:boxcolor=black@0.25[v]"
+    f"[grained]drawtext=text='@AWRAM':x={text_alignment_x}:y={text_alignment_y}:fontsize=42:fontcolor=white:borderw=2:bordercolor=black:box=1:boxcolor=black@0.75:boxborderw=10[v]"
 )
 
 # Render Step 1: Fully process video transformations into constant 30fps container lanes
@@ -1010,9 +1148,8 @@ res1 = subprocess.run(ffmpeg_editing, capture_output=True, text=True)
 if res1.returncode != 0:
     print(f"❌ Editing phase crashed: {res1.stderr}")
     raise RuntimeError("FFmpeg Editing Canvas Failure")
-print("✅ Step 1 Complete: Visual layers processed successfully.")
 
-
+print("✅ Step 1 Complete: Watermark covered with professional brand accent canvas successfully.")
 
 
 ## ==========================================
