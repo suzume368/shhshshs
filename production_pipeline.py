@@ -169,6 +169,8 @@
 
 
 
+
+# %% [code]
 # %% [code]
 # %% [code]
 # %% [code]
@@ -540,39 +542,50 @@ print("✅ Phase A Complete: Adaptive background color matching loop finalized s
 
 
 # --------------------------------------------------
-# PHASE B: APPLY FILTER STACK & CENTER BRAND TEXT BOX OVER BLUR
+# PHASE B: HARDWARE-ACCELERATED RHYTHMIC FILTER STACK (STABLE HOLD)
 # --------------------------------------------------
+print("🎬 Injecting stable frame layout, dynamic color loops, and flashing cuts into canvas...")
+
+def get_duration(file_path):
+    cmd = f"ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {file_path}"
+    return float(subprocess.check_output(cmd, shell=True).decode().strip())
+
+try:
+    p_duration = get_duration(CLEAN_INPUT_STAGE1)
+except Exception:
+    p_duration = 10.0 
+
+# Color grading dynamic presets
 styles = [
-    "eq=contrast=1.05:brightness=0.01:saturation=1.02:gamma=0.97",
-    "curves=m='0/0 0.25/0.18 0.5/0.5 0.75/0.82 1/1'",
-    "eq=contrast=0.95:brightness=0.02:saturation=0.92:gamma=1.04"
+    "eq=contrast=1.06:brightness=0.01:saturation=1.12:gamma=0.96",
+    "curves=m='0/0 0.25/0.20 0.5/0.5 0.75/0.80 1/1'",
+    "eq=contrast=1.02:brightness=0.02:saturation=1.05:gamma=1.02"
 ]
-effects = [
-    "convolution='-1 -1 -1 -1 9 -1 -1 -1 -1',eq=contrast=1.06:brightness=0.01",
-    "hue='H=0.1*PI*t:s=1.03'",
-    "eq=contrast=1.1:brightness=0.02:saturation=1.05"
-]
-chosen_style, chosen_effect = random.choice(styles), random.choice(effects)
+chosen_style = random.choice(styles)
 
-# Mathematically centers your text handle perfectly inside the box on the final 1080x1920 layout
-text_alignment_x = f"{final_x} + ({final_w} - tw)/2"
-text_alignment_y = f"{final_y} + ({final_h} - th)/2"
+# Dynamic exposure flash cut trigger right at the 0.3-second clip exit boundary
+flash_transition = f"eq=brightness='if(gte(t,{p_duration}-0.3), (t-({p_duration}-0.3))*1.5, 0)':contrast='if(gte(t,{p_duration}-0.3), 1+((t-({p_duration}-0.3))*2), 1)'"
 
-# Generates a sleek, custom box over the exact blurred coordinates, completely covering any smudge artifacts
+# 🔥 TRANSITION GRAPH DESIGN (STABLE HOLD):
+# Completely removed the zoompan expression to keep the main scaled video 100% stable.
+# The ambient blur background (hue='H=t*0.6') and glowing chroma frames (hue='H=t*2.2') remain perfectly active.
 filter_complex_editing = (
-    f"[0:v]scale=1080:1920,boxblur=25:5,{chosen_effect}[bg];"
-    f"[0:v]scale=918:1632,{chosen_style}[main_scaled];"
-    f"[bg][main_scaled]overlay=(W-w)/2:(H-h)/2,setsar=1[processed_source];"
-    f"[processed_source]noise=alls=7:allf=t+u[grained];"
-    f"[grained]drawtext=text='@AWRAM':x={text_alignment_x}:y={text_alignment_y}:fontsize=42:fontcolor=white:borderw=2:bordercolor=black:box=1:boxcolor=black@0.75:boxborderw=10[v]"
+    f"[0:v]scale=1080:1920,boxblur=25:5,hue='H=t*0.6'[bg];"
+    f"[0:v]scale=918:1632,{chosen_style},split=2[main_stable1][main_stable2];"
+    f"[main_stable1]drawbox=x=0:y=0:w=918:h=1632:color=white:t=14[base_border];"
+    f"[base_border]hue='H=t*2.2'[glowing_chroma_border];"
+    f"[glowing_chroma_border]scale=926:1640[scaled_border_layer];"
+    f"[bg][scaled_border_layer]overlay=(W-w)/2:(H-h)/2,setsar=1[canvas_joined];"
+    f"[canvas_joined][main_stable2]overlay=(W-w)/2:(H-h)/2,setsar=1[visual_master];"
+    f"[visual_master]noise=alls=7:allf=t+u,{flash_transition}[v]"
 )
 
-# Render Step 1: Fully process video transformations into constant 30fps container lanes
+# Render Step 1: Fully process video transformations natively on NVIDIA NVENC hardware lanes
 ffmpeg_editing = [
     "ffmpeg", "-y", "-hwaccel", "cuda", 
     "-i", CLEAN_INPUT_STAGE1,          
     "-filter_complex", filter_complex_editing, 
-    "-map", "[v]",      
+    "-map", "[v]", "-map", "0:a?",     
     "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "20", "-r", "30", "-pix_fmt", "yuv420p",
     EDITED_SOURCE_ONLY
 ]
@@ -582,7 +595,7 @@ if res1.returncode != 0:
     print(f"❌ Editing phase crashed: {res1.stderr}")
     raise RuntimeError("FFmpeg Editing Canvas Failure")
 
-print("✅ Step 1 Complete: Watermark covered with professional brand accent canvas successfully.")
+print("🏆 SUCCESS! Step 1 Complete: Rhythmic chroma borders and environment layers compiled with a stable main video frame.")
 
 
 ## ==========================================
