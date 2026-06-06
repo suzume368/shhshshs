@@ -1,12 +1,28 @@
 {
-  "reel_url": "https://www.instagram.com/reel/DT3phpWjgDQ/",
-  "shortcode": "DT3phpWjgDQ",
-  "username": "reel",
-  "script_text": " ",
-  "youtube_title": "AI Hack #shorts",
-  "youtube_description": "Tip from @reel. #ai",
-  "youtube_tags": [
-    "AI",
-    "Shorts"
-  ]
+  "youtube_channel_id": "UCUVV_gfTPFKRFb1pulMH6eQ",
+  "channel_url": "https://youtube.com/@healingpath-v1y",
+  "channel_name": "HealingPath",
+  "upload_schedule": "0 */6 * * *",
+  "max_videos_per_run": 5,
+  "shorts_hashtags": [
+    "#shorts",
+    "#viral",
+    "#trending",
+    "#healingpath",
+    "#motivation"
+  ],
+  "instagram_sources": [
+    "https://www.instagram.com/aaryankelvin/",
+    "https://www.instagram.com/khatam_bhaiiiii_/",
+    "https://www.instagram.com/round2hell/",
+    "https://www.instagram.com/suraj.rox.1654/"
+  ],
+  "video_settings": {
+    "made_for_kids": false,
+    "privacy_status": "public",
+    "category_id": "22",
+    "language": "ur"
+  },
+  "duplicate_check": true,
+  "processed_links_file": ".processed_links.txt"
 }
